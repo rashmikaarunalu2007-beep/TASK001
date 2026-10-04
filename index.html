@@ -387,6 +387,9 @@ button.ghost{background:transparent; color:var(--accent); border:1.5px solid var
     });
   });
 
+  // GOOGLE SHEET CONNECTED API ENDPOINT
+  var GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby8QHxE-XVTZQYwOSNqCImPHSxwb8PabGAJss7aShi2-pjTZFjoOQsrkrueoFrUv0-v/exec';
+
   form.addEventListener('submit', function(e){
     e.preventDefault();
     if (!validate()) {
@@ -403,9 +406,12 @@ button.ghost{background:transparent; color:var(--accent); border:1.5px solid var
     };
     btn.disabled = true; btn.textContent = 'Saving...';
 
-    // No backend is connected. To send data to your server, replace this
-    // block with: fetch('/your-endpoint', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)})
-    setTimeout(function(){
+    fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }).then(function() {
       document.getElementById('sName').textContent = data.name;
       document.getElementById('rName').textContent = data.name;
       document.getElementById('rWeight').textContent = data.weight + ' ' + data.unit;
@@ -417,8 +423,10 @@ button.ghost{background:transparent; color:var(--accent); border:1.5px solid var
       window.scrollTo(0, 0);
       btn.disabled = false; btn.textContent = 'Save check-in';
       document.getElementById('againBtn').focus();
-      saveFile();
-    }, 500);
+    }).catch(function(err) {
+      alert('Error saving data. Please try again.');
+      btn.disabled = false; btn.textContent = 'Save check-in';
+    });
   });
 
   document.getElementById('dlBtn').addEventListener('click', saveFile);
