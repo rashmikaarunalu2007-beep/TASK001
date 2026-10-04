@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Weight check-in</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#eef3f1; --card:#ffffff; --ink:#14201c; --muted:#5b6b65; --line:#cfdad5;
+  --accent:#0f6b57; --accent-ink:#ffffff; --err:#b3261e; --ok-bg:#e3f3ec;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1714; --card:#16231f; --ink:#e8f1ed; --muted:#9db0a8; --line:#2c3f38;
+    --accent:#4fc3a1; --accent-ink:#06201a; --err:#ff8a80; --ok-bg:#183328;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1714; --card:#16231f; --ink:#e8f1ed; --muted:#9db0a8; --line:#2c3f38;
+  --accent:#4fc3a1; --accent-ink:#06201a; --err:#ff8a80; --ok-bg:#183328;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:border-box}
+body{
+  margin:0; min-height:100vh; background:var(--bg); color:var(--ink);
+  font-family:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;
+  display:flex; align-items:center; justify-content:center; padding:24px 16px;
+}
+.card{
+  width:100%; max-width:440px; background:var(--card);
+  border:1px solid var(--line); border-radius:16px; padding:32px 28px;
+}
+h1{font-size:1.6rem; margin:0 0 6px; letter-spacing:-.01em}
+.sub{margin:0 0 24px; color:var(--muted); line-height:1.5}
+.field{margin-bottom:18px}
+label{display:block; font-weight:600; font-size:.95rem; margin-bottom:6px}
+input,select{
+  width:100%; font:inherit; color:var(--ink); background:var(--bg);
+  border:1.5px solid var(--line); border-radius:10px; padding:12px 14px;
+}
+input:focus,select:focus,button:focus-visible{outline:3px solid var(--accent); outline-offset:1px; border-color:var(--accent)}
+.row{display:flex; gap:10px}
+.row input{flex:1; min-width:0}
+.row select{width:92px; flex:none}
+.invalid{border-color:var(--err)}
+.err{color:var(--err); font-size:.85rem; margin:6px 0 0; min-height:1.1em}
+button{
+  width:100%; font:inherit; font-weight:600; cursor:pointer; border:0;
+  background:var(--accent); color:var(--accent-ink); border-radius:10px; padding:14px;
+  transition:transform .08s ease, opacity .2s;
+}
+button:active{transform:scale(.98)}
+button:disabled{opacity:.6; cursor:wait}
+button.ghost{background:transparent; color:var(--accent); border:1.5px solid var(--accent); margin-top:18px}
+.success{text-align:center}
+.tick{
+  width:64px; height:64px; margin:0 auto 16px; border-radius:50%;
+  background:var(--ok-bg); display:grid; place-items:center;
+}
+.tick svg{width:32px; height:32px; stroke:var(--accent); fill:none; stroke-width:3; stroke-linecap:round; stroke-linejoin:round}
+.summary{
+  text-align:left; margin:20px 0 0; padding:16px; background:var(--bg);
+  border-radius:10px; display:grid; grid-template-columns:auto 1fr; gap:8px 16px;
+}
+.summary dt{color:var(--muted)} .summary dd{margin:0; font-weight:600; text-align:right}
+.plan{text-align:left; margin-top:24px}
+.plan h2{font-size:1.15rem; margin:0 0 4px}
+.plan h3{font-size:1rem; margin:20px 0 8px; color:var(--accent)}
+.plan ul{list-style:none; margin:0; padding:0; border:1px solid var(--line); border-radius:10px; overflow:hidden}
+.plan li{display:flex; justify-content:space-between; gap:14px; padding:11px 14px; border-top:1px solid var(--line); line-height:1.35}
+.plan li:first-child{border-top:0}
+.plan li span:last-child{font-weight:600; white-space:nowrap; text-align:right}
+.exhead{display:flex; justify-content:space-between; align-items:center; margin:0 0 8px}
+.exhead strong{color:var(--accent)}
+.link{width:auto; background:none; color:var(--accent); padding:4px 6px; font-size:.85rem; border:0}
+.opt{display:flex; align-items:flex-start; gap:12px; padding:10px 12px; border:1.5px solid var(--line); border-radius:10px; margin-bottom:8px; cursor:pointer; line-height:1.35; font-weight:400}
+.opt input{width:20px; height:20px; margin:1px 0 0; padding:0; flex:none; accent-color:var(--accent)}
+.opt .d{display:block; color:var(--muted); font-size:.85rem}
+.opt:has(input:checked){border-color:var(--accent); background:var(--ok-bg)}
+.exsec{margin-bottom:18px}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){button{transition:none}}
+</style>
+</head>
+<body>
+<main class="card">
+  <section id="formView">
+    <h1>Weight check-in</h1>
+    <p class="sub">Log your body weight for the day. It takes ten seconds.</p>
+    <form id="form" novalidate>
+      <div class="field">
+        <label for="name">Name</label>
+        <input id="name" name="name" type="text" autocomplete="name" placeholder="Your full name" required>
+        <p class="err" id="nameErr" role="alert"></p>
+      </div>
+      <div class="field">
+        <label for="weight">Body weight</label>
+        <div class="row">
+          <input id="weight" name="weight" type="number" inputmode="decimal" step="0.1" min="1" placeholder="e.g. 70.5" required>
+          <select id="unit" name="unit" aria-label="Weight unit">
+            <option value="kg">kg</option>
+            <option value="lb">lb</option>
+          </select>
+        </div>
+        <p class="err" id="weightErr" role="alert"></p>
+      </div>
+      <div class="field">
+        <label for="day">Day</label>
+        <select id="day" name="day" required>
+          <option value="">Select a workout day</option>
+          <option>Push Day: Chest, Shoulders, Triceps</option>
+          <option>Pull Day: Back, Biceps, Rear Delts, Forearms</option>
+          <option>Legs Day: Quads, Hamstrings, Glutes, Calves, Abs</option>
+          <option>Upper</option>
+          <option>Lower</option>
+        </select>
+        <p class="err" id="dayErr" role="alert"></p>
+      </div>
+      <div id="exercises" hidden></div>
+      <button type="submit" id="submitBtn">Save check-in</button>
+    </form>
+  </section>
+
+  <section id="successView" class="success" hidden aria-live="polite">
+    <div class="tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+    <h1>Check-in saved</h1>
+    <p class="sub" style="margin-bottom:0">Thanks, <span id="sName"></span>. Here is what you sent.</p>
+    <dl class="summary">
+      <dt>Name</dt><dd id="rName"></dd>
+      <dt>Body weight</dt><dd id="rWeight"></dd>
+      <dt>Day</dt><dd id="rDay"></dd>
+    </dl>
+    <div id="plan" class="plan" hidden></div>
+    <p id="fileStatus" class="sub" style="margin:18px 0 0" role="status"></p>
+    <button type="button" id="dlBtn" style="margin-top:14px">Download Excel</button>
+    <button type="button" class="ghost" id="againBtn">Add another check-in</button>
+  </section>
+</main>
+
+<script>
+(function(){
+  var form = document.getElementById('form');
+  var formView = document.getElementById('formView');
+  var successView = document.getElementById('successView');
+  var btn = document.getElementById('submitBtn');
+  var fields = {
+    name: {el: document.getElementById('name'), err: document.getElementById('nameErr')},
+    weight: {el: document.getElementById('weight'), err: document.getElementById('weightErr')},
+    day: {el: document.getElementById('day'), err: document.getElementById('dayErr')}
+  };
+
+  var PUSH = 'Push Day: Chest, Shoulders, Triceps';
+  var WORKOUTS = {};
+  WORKOUTS[PUSH] = [
+    {title:'Push Day: Chest', items:[
+      ['Incline Dumbbell','4 sets × 8–10'],
+      ['Flat Barbell or Dumbbell Press','3 sets × 8–10'],
+      ['Decline Barbell Bench Press','3 sets × 8–10'],
+      ['Cable Flyes (Upper Chest)','12–15 reps'],
+      ['Cable Flyes (Inner Chest)','12–15 reps'],
+      ['Cable Flyes (Lower Chest)','12–15 reps']
+    ]},
+    {title:'Push Day: Shoulders', items:[
+      ['Cable Lateral Raises (Single-Arm)','4 sets × 8–10'],
+      ['Dumbbell Lateral Raises (Drop-Set Finisher)','3 sets'],
+      ['Barbell Overhead Press (OHP)','3 sets × 8–10'],
+      ['Dumbbell Shoulder Press','3 sets × 8–10']
+    ]},
+    {title:'Push Day: Triceps', items:[
+      ['Tricep Rope Pushdowns','4 sets × 8–10'],
+      ['Tricep Pushdowns','4 sets × 8–10'],
+      ['Skull Crushers (EZ-Bar)','3 sets × 8–10'],
+      ['Overhead Dumbbell','3 sets × 8–10'],
+      ['Overhead Cable Extension','3 sets × 8–10'],
+      ['Single-Arm High-to-Low Cable Cross-Body Extension / Kickback','3 sets × 8–10'],
+      ['Single-Arm Cable Overhead Tricep Extension (Top Pick)','3 sets × 8–10']
+    ]}
+  ];
+
+  WORKOUTS['Pull Day: Back, Biceps, Rear Delts, Forearms'] = [
+    {title:'Pull Day: Back', items:[
+      ['Deadlift','3 sets × 8–10'],
+      ['Lat Pulldowns (Wide-Grip): Lats & V-Taper Width','4 sets × 8–15'],
+      ['Seated Cable Rows, Wide Grip (Upper Back)','3 sets × 8–15'],
+      ['Incline Bench Dumbbell Row','3 sets × 8–10'],
+      ['Seated Cable Rows, Close Grip (Lats)','3 sets × 8–15'],
+      ['Pullovers','3 sets × 8–15'],
+      ['Hyperextensions / Back Extensions','']
+    ]},
+    {title:'Pull Day: Biceps', items:[
+      ['Incline Dumbbell Curls','3 sets × 8–10'],
+      ['Incline Cable Curls','3 sets × 8–10'],
+      ['Dumbbell Hammer Curls','3 sets × 8–15'],
+      ['Cable Hammer Curls','3 sets × 8–15'],
+      ['Preacher Curls','3 sets × 8–10'],
+      ['Single-Arm Preacher Curls (Dumbbell)','3 sets × 8–15'],
+      ['Barbell or EZ-Bar Curls','4 sets × 8–10']
+    ]},
+    {title:'Pull Day: Rear Delts', items:[
+      ['Cable Face Pulls','4 sets × 8–15'],
+      ['Reverse Cable Flyes','4 sets × 8–15'],
+      ['Bent-Over Dumbbell Rear Delt Flyes','4 sets × 8–15'],
+      ['Cable Flyes (Single-Arm)','4 sets × 8–15']
+    ]},
+    {title:'Pull Day: Forearms', items:[
+      ['Barbell Reverse Curls','4 sets × 10–20'],
+      ['Seated Dumbbell Wrist Extensions','4 sets × 10–15']
+    ]}
+  ];
+
+  WORKOUTS['Legs Day: Quads, Hamstrings, Glutes, Calves, Abs'] = [
+    {title:'Legs Day', items:[
+      ['Barbell Squats','3 sets × 8–10'],
+      ['Bulgarian Split','3 sets × 8–10'],
+      ['Leg Extensions','3 sets × 8–10'],
+      ['Leg Press','3 sets × 8–10'],
+      ['Single-Leg Dumbbell RDL','3 sets × 8–10'],
+      ['Romanian Deadlifts (RDLs - Barbell or Dumbbell)','3 sets × 8–10'],
+      ['Standing Calf Raises (Barbell / Smith Machine / Machine)','4 sets × 8–15'],
+      ['Seated Calf Raises','4 sets × 8–15'],
+      ['Leg Press Calf Press','4 sets × 8–15']
+    ]},
+    {title:'Legs Day: Abs', items:[
+      ['Hanging Leg','3 sets × 10–15'],
+      ['Cable Kneeling Crunches','3 sets × 10–15'],
+      ['Decline Crunches','3 sets × 10–15']
+    ]}
+  ];
+
+  WORKOUTS['Upper'] = WORKOUTS[PUSH].concat(WORKOUTS['Pull Day: Back, Biceps, Rear Delts, Forearms']);
+
+  WORKOUTS['Lower'] = WORKOUTS['Legs Day: Quads, Hamstrings, Glutes, Calves, Abs'].map(function(s){
+    return {title:s.title, items:s.items.slice()};
+  });
+  WORKOUTS['Lower'][0].items.splice(1, 0, ['Deadlift','3 sets × 8–10']);
+
+  var exBox = document.getElementById('exercises');
+
+  function renderChecklist(day){
+    exBox.innerHTML = '';
+    var plan = WORKOUTS[day];
+    if (!plan) { exBox.hidden = true; return; }
+    plan.forEach(function(sec, si){
+      var wrap = document.createElement('div'); wrap.className = 'exsec';
+      var head = document.createElement('div'); head.className = 'exhead';
+      var t = document.createElement('strong'); t.textContent = sec.title;
+      var all = document.createElement('button'); all.type = 'button'; all.className = 'link'; all.textContent = 'Select all';
+      head.appendChild(t); head.appendChild(all); wrap.appendChild(head);
+      var boxes = [];
+      sec.items.forEach(function(it, ii){
+        var lab = document.createElement('label'); lab.className = 'opt';
+        var cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = si + ':' + ii;
+        var txt = document.createElement('span');
+        txt.appendChild(document.createTextNode(it[0]));
+        var d = document.createElement('span'); d.className = 'd'; d.textContent = it[1];
+        txt.appendChild(d);
+        lab.appendChild(cb); lab.appendChild(txt); wrap.appendChild(lab);
+        boxes.push(cb);
+      });
+      all.addEventListener('click', function(){
+        var allOn = boxes.every(function(b){ return b.checked; });
+        boxes.forEach(function(b){ b.checked = !allOn; });
+        all.textContent = allOn ? 'Select all' : 'Clear';
+      });
+      exBox.appendChild(wrap);
+    });
+    exBox.hidden = false;
+  }
+
+  function renderPlan(day, selected){
+    var box = document.getElementById('plan');
+    box.innerHTML = '';
+    var plan = WORKOUTS[day];
+    if (!plan || !selected.length) { box.hidden = true; return; }
+    var h = document.createElement('h2');
+    h.textContent = 'Selected exercises (' + selected.length + ')';
+    box.appendChild(h);
+    plan.forEach(function(sec, si){
+      var items = sec.items.filter(function(it, ii){ return selected.indexOf(si + ':' + ii) > -1; });
+      if (!items.length) return;
+      var h3 = document.createElement('h3'); h3.textContent = sec.title;
+      var ul = document.createElement('ul');
+      items.forEach(function(it){
+        var li = document.createElement('li');
+        var a = document.createElement('span'); a.textContent = it[0];
+        var b = document.createElement('span'); b.textContent = it[1];
+        li.appendChild(a); li.appendChild(b); ul.appendChild(li);
+      });
+      box.appendChild(h3); box.appendChild(ul);
+    });
+    box.hidden = false;
+  }
+
+  fields.day.el.addEventListener('change', function(){ renderChecklist(fields.day.el.value); });
+
+  var HEAD = ['Date','Time','Name','Body weight','Unit','Day','Section','Exercise','Sets / Reps'];
+  var FILE_NAME = 'gym daily task';
+  var fileStatus = document.getElementById('fileStatus');
+
+  function loadLog(){
+    try { return JSON.parse(localStorage.getItem('gymLog') || '[]'); } catch(e){ return []; }
+  }
+  function storeLog(l){
+    try { localStorage.setItem('gymLog', JSON.stringify(l)); } catch(e){}
+  }
+  var memLog = loadLog();
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function entryRows(data){
+    var d = new Date(data.submittedAt);
+    var date = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+    var time = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    var plan = WORKOUTS[data.day] || [];
+    var out = [];
+    data.exercises.forEach(function(k){
+      var p = k.split(':'), sec = plan[+p[0]], it = sec.items[+p[1]];
+      out.push([date, time, data.name, data.weight, data.unit, data.day, sec.title, it[0], it[1]]);
+    });
+    if (!out.length) out.push([date, time, data.name, data.weight, data.unit, data.day, '', '', '']);
+    return out;
+  }
+
+  function buildFile(){
+    var aoa = [HEAD].concat(memLog);
+    if (window.XLSX) {
+      var ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = [12,7,18,12,6,46,24,52,14].map(function(w){ return {wch:w}; });
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Gym log');
+      var buf = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+      return {name: FILE_NAME + '.xlsx', data: new Blob([buf])};
+    }
+    var csv = aoa.map(function(r){
+      return r.map(function(c){ return '"' + String(c).replace(/"/g,'""') + '"'; }).join(',');
+    }).join('\r\n');
+    return {name: FILE_NAME + '.csv', data: '\ufeff' + csv};
+  }
+
+  function saveFile(){
+    fileStatus.textContent = '';
+    if (!(window.claude && window.claude.use)) {
+      var lf = buildFile();
+      var blob = lf.data instanceof Blob ? lf.data : new Blob([lf.data], {type:'text/csv;charset=utf-8'});
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = lf.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      fileStatus.textContent = 'Downloaded ' + lf.name + ' with ' + memLog.length + ' rows. Put it in Documents\\gym daily task.';
+      return;
+    }
+    window.claude.use('downloads').then(function(dl){
+      if (!dl) { fileStatus.textContent = 'Download is not available in this view.'; return; }
+      var f = buildFile();
+      return dl.save({filename: f.name, data: f.data}).then(function(){
+        fileStatus.textContent = 'Saved ' + f.name + ' with ' + memLog.length + ' rows. Put it in Documents\\gym daily task.';
+      });
+    }).catch(function(err){
+      fileStatus.textContent = (err && err.code === 'declined')
+        ? 'Not saved. Tap Download Excel to try again.'
+        : 'Could not save the file. Tap Download Excel to try again.';
+    });
+  }
+
+  function validate(){
+    var ok = true, msg = {};
+    var n = fields.name.el.value.trim();
+    var w = parseFloat(fields.weight.el.value);
+    var d = fields.day.el.value;
+    if (n.length < 2) msg.name = 'Enter your name.';
+    if (isNaN(w) || w <= 0 || w > 700) msg.weight = 'Enter a weight between 1 and 700.';
+    if (!d) msg.day = 'Choose a workout day.';
+    Object.keys(fields).forEach(function(k){
+      fields[k].err.textContent = msg[k] || '';
+      fields[k].el.classList.toggle('invalid', !!msg[k]);
+      if (msg[k]) ok = false;
+    });
+    return ok;
+  }
+
+  Object.keys(fields).forEach(function(k){
+    fields[k].el.addEventListener('input', function(){
+      fields[k].err.textContent = '';
+      fields[k].el.classList.remove('invalid');
+    });
+  });
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    if (!validate()) {
+      var bad = form.querySelector('.invalid'); if (bad) bad.focus();
+      return;
+    }
+    var data = {
+      name: fields.name.el.value.trim(),
+      weight: parseFloat(fields.weight.el.value),
+      unit: document.getElementById('unit').value,
+      day: fields.day.el.value,
+      exercises: Array.prototype.map.call(exBox.querySelectorAll('input:checked'), function(c){ return c.value; }),
+      submittedAt: new Date().toISOString()
+    };
+    btn.disabled = true; btn.textContent = 'Saving...';
+
+    // No backend is connected. To send data to your server, replace this
+    // block with: fetch('/your-endpoint', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)})
+    setTimeout(function(){
+      document.getElementById('sName').textContent = data.name;
+      document.getElementById('rName').textContent = data.name;
+      document.getElementById('rWeight').textContent = data.weight + ' ' + data.unit;
+      document.getElementById('rDay').textContent = data.day;
+      memLog = memLog.concat(entryRows(data));
+      storeLog(memLog);
+      renderPlan(data.day, data.exercises);
+      formView.hidden = true; successView.hidden = false;
+      window.scrollTo(0, 0);
+      btn.disabled = false; btn.textContent = 'Save check-in';
+      document.getElementById('againBtn').focus();
+      saveFile();
+    }, 500);
+  });
+
+  document.getElementById('dlBtn').addEventListener('click', saveFile);
+
+  document.getElementById('againBtn').addEventListener('click', function(){
+    form.reset();
+    renderChecklist('');
+    successView.hidden = true; formView.hidden = false;
+    fields.name.el.focus();
+  });
+})();
+</script>
+</body>
+</html>
